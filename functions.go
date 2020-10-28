@@ -2,8 +2,8 @@ package functions
 
 import (
 	"context"
-	"github.com/covid19cz/erouska-backend/internal/pubsub"
-
+	firebase "firebase.google.com/go"
+	"firebase.google.com/go/messaging"
 	"github.com/covid19cz/erouska-backend/internal/functions/changepushtoken"
 	"github.com/covid19cz/erouska-backend/internal/functions/coviddata"
 	"github.com/covid19cz/erouska-backend/internal/functions/efgs"
@@ -12,6 +12,9 @@ import (
 	"github.com/covid19cz/erouska-backend/internal/functions/publishkeys"
 	"github.com/covid19cz/erouska-backend/internal/functions/registerehrid"
 	"github.com/covid19cz/erouska-backend/internal/functions/registernotification"
+	"github.com/covid19cz/erouska-backend/internal/logging"
+	"github.com/covid19cz/erouska-backend/internal/pubsub"
+	"time"
 
 	"net/http"
 )
@@ -88,4 +91,52 @@ func EfgsDownloadKeys(ctx context.Context, m pubsub.Message) error {
 // EfgsDownloadYesterdaysKeys downloads EFGS keys batch from whole yesterday
 func EfgsDownloadYesterdaysKeys(w http.ResponseWriter, r *http.Request) {
 	efgs.DownloadAndSaveYesterdaysKeys(w, r)
+}
+
+func Budicek(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	logger := logging.FromContext(ctx)
+
+	conf := &firebase.Config{
+		DatabaseURL: "firebaseDbURL",
+	}
+
+	app, err := firebase.NewApp(ctx, conf)
+	if err != nil {
+		logger.Fatalf("firebase.NewApp: %v", err)
+	}
+
+	client, err := app.Messaging(ctx)
+	if err != nil {
+		logger.Errorf("error getting Messaging client: %v\n", err)
+	}
+
+	// This registration token comes from the client FCM SDKs.
+	//registrationToken := "1fb99f06bf7f791bce2ae93f8b26048201501e73a973700528f3c9083c385d52"
+
+	duration, _ := time.ParseDuration("1d")
+
+	// See documentation on defining a message payload.
+	message := &messaging.Message{
+		Data: map[string]string{
+			"downloadKeyExport": "true",
+		},
+		Topic: "budicek",
+		Android: &messaging.AndroidConfig{
+			Priority: "high",
+			TTL:      &duration,
+		},
+	}
+
+	// Send a message to the device corresponding to the provided
+	// registration token.
+	response, err := client.Send(ctx, message)
+	if err != nil {
+		panic(err)
+	}
+	// Response is a message ID string.
+
+	logger.Debugf("Response: %+v", response)
+
+	w.Write([]byte("Successfully sent"))
 }
